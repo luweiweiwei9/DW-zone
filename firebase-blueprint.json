@@ -1,0 +1,85 @@
+{
+  "collections": {
+    "users": {
+      "documents": {
+        "userId": {
+          "email": "string",
+          "displayName": "string",
+          "photoURL": "string",
+          "partnerId": "string",
+          "inviteCode": "string",
+          "roomId": "string",
+          "currentLang": "string"
+        }
+      }
+    },
+    "rooms": {
+      "documents": {
+        "roomId": {
+          "participants": "array",
+          "createdAt": "timestamp"
+        }
+      },
+      "subcollections": {
+        "messages": {
+          "documents": {
+            "messageId": {
+              "senderId": "string",
+              "text": "string",
+              "type": "string",
+              "mediaUrl": "string",
+              "expiresAt": "timestamp",
+              "timestamp": "timestamp",
+              "metadata": "object"
+            }
+          }
+        },
+        "shared_assets": {
+          "documents": {
+            "assetId": {
+              "type": "string",
+              "url": "string",
+              "title": "string",
+              "addedBy": "string",
+              "timestamp": "timestamp"
+            }
+          }
+        },
+        "teaching_log": {
+          "documents": {
+            "logId": {
+              "teacher": "string",
+              "topic": "string",
+              "explanation": "string",
+              "example": "string",
+              "timestamp": "timestamp"
+            }
+          }
+        }
+      }
+    },
+    "invites": {
+      "documents": {
+        "code": {
+          "senderId": "string",
+          "createdAt": "timestamp",
+          "status": "string"
+        }
+      }
+    },
+    "vault": {
+      "documents": {
+        "itemId": {
+          "userId": "string",
+          "term": "string",
+          "translation": "string",
+          "phonetic": "string",
+          "bucket": "string",
+          "srsLevel": "number",
+          "nextReviewDate": "string",
+          "timestamp": "timestamp"
+        }
+      }
+    }
+  }
+}

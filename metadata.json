@@ -1,0 +1,12 @@
+{
+  "name": "DW Zone",
+  "description": "Private dual-language and life exchange space for DIF and William bridging Hong Kong and Sweden.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

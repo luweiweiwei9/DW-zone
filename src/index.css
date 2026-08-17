@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    @apply transition-colors duration-500 min-h-screen font-sans;
+    background-attachment: fixed;
+  }
+}
+
+/* Theme 1: Frosted Glass Bento */
+body.theme-glass {
+  @apply bg-gradient-to-br from-rose-50 via-slate-50 to-indigo-50 text-slate-900;
+}
+body.theme-glass .dynamic-card {
+  @apply backdrop-blur-xl bg-white/75 border border-white/60 shadow-xl shadow-slate-200/50 rounded-3xl transition-all duration-300;
+}
+
+/* Theme 2: Editorial Zen */
+body.theme-editorial {
+  @apply bg-[#FDFBF7] text-[#2C2A29];
+}
+body.theme-editorial .dynamic-card {
+  @apply bg-[#F7F4EC] border border-[#E6E1D6] shadow-sm rounded-2xl transition-all duration-300;
+}
+
+/* Theme 3: Neon Cyber */
+body.theme-neon {
+  @apply bg-slate-950 text-slate-100;
+}
+body.theme-neon .dynamic-card {
+  @apply backdrop-blur-xl bg-slate-900/90 border border-cyan-500/40 shadow-2xl shadow-cyan-950/50 rounded-3xl text-slate-100 transition-all duration-300;
+}
+
+/* Theme 4: Biolume Aurora */
+body.theme-biolume {
+  @apply bg-gradient-to-br from-teal-950 via-slate-900 to-emerald-950 text-emerald-50;
+}
+body.theme-biolume .dynamic-card {
+  @apply backdrop-blur-xl bg-teal-900/40 border border-teal-500/30 shadow-2xl shadow-teal-950/60 rounded-3xl text-emerald-100 transition-all duration-300;
+}
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+
+
