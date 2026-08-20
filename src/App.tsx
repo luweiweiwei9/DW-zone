@@ -20,7 +20,28 @@ export default function App() {
   const [currentTheme, setCurrentTheme] = useState<UiTheme>('glass');
   const [currentLang, setCurrentLang] = useState<UiLanguage>('en');
   const [incomingCall, setIncomingCall] = useState<{ id: string; callerName: string } | null>(null);
-  
+  useEffect(() => {
+    // 1. 頁面載入時取得當前 session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        // 如果原本 App 用 authService 處理 Profile，可在這裡載入
+        authService.getCurrentUser().then(setUser);
+      } else {
+        setUser(null);
+      }
+    });
+
+    // 2. 監聽 Google 授權跳轉回來的狀態變化
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        authService.getCurrentUser().then(setUser);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
   // Real-time Data
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>([]);
   const [assets, setAssets] = useState<SharedAsset[]>([]);
