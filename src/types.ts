@@ -6,11 +6,13 @@ export type UiLanguage = 'en' | 'zh' | 'sv';
 
 export interface UserProfile {
   uid: string;
+  id?: string;
   email: string | null;
   displayName: string | null;
   photoURL: string | null;
-  name: string;
-  avatar: string;
+  name?: string;
+  avatar?: string;
+  role?: UserRole;
   identity?: 'DW' | 'William';
   location?: 'HK' | 'SE';
   partnerId?: string;
@@ -144,4 +146,3 @@ export interface LanguageSyncAnchorState {
     userBCompleted: boolean;
   }[];
 }
-
