@@ -33,7 +33,6 @@ export const authService = {
 
       const user = session.user;
       
-      // 回傳符合 UserProfile 結構的物件
       return {
         uid: user.id,
         displayName: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
@@ -45,6 +44,23 @@ export const authService = {
       console.error('Error getting current user:', error);
       return null;
     }
+  },
+
+  // 補上這段！讓舊元件呼叫 onAuthUpdate 時不會崩潰
+  onAuthUpdate(callback: (user: UserProfile | null) => void) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        const user = await this.getCurrentUser();
+        callback(user);
+      } else {
+        callback(null);
+      }
+    });
+
+    // 頁面載入時先執行一次 Initial Check
+    this.getCurrentUser().then(callback);
+
+    return () => subscription.unsubscribe();
   },
 
   // 更新 User Profile
