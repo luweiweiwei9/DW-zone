@@ -12,7 +12,7 @@ import { NewStoryModal } from './components/NewStoryModal';
 import { Onboarding } from './components/Onboarding';
 import { authService } from './lib/authService';
 import { dbService } from './lib/dbService';
-
+import { supabase } from './lib/supabase';
 export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [partner, setPartner] = useState<UserProfile | null>(null);
