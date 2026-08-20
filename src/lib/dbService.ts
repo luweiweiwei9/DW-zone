@@ -1,252 +1,61 @@
-import { 
-  collection, 
-  addDoc, 
-  query, 
-  orderBy, 
-  onSnapshot, 
-  serverTimestamp, 
-  Timestamp,
-  doc,
-  getDoc,
-  setDoc,
-  where,
-  limit,
-  updateDoc,
-  arrayUnion
-} from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from './firebase';
-import { ChatMessage, VocabularyItem, SharedAsset, TeachingLogEntry, MicroStory } from '../types';
+import { supabase } from './supabase';
+import { VocabularyItem, SharedAsset, TeachingLogEntry, MicroStory } from '../types';
 
 export const dbService = {
-  // Real-time Chat
-  subscribeToMessages(roomId: string, callback: (messages: ChatMessage[]) => void) {
-    const q = query(
-      collection(db, 'rooms', roomId, 'messages'),
-      orderBy('timestamp', 'desc'),
-      limit(50)
-    );
+  subscribeData(roomId: string, callbacks: {
+    onVocabulary: (data: VocabularyItem[]) => void;
+    onAssets: (data: SharedAsset[]) => void;
+    onTeachingLog: (data: TeachingLogEntry[]) => void;
+    onStories: (data: MicroStory[]) => void;
+  }) {
+    // 1. Initial Fetch
+    this.getRoomData(roomId, callbacks);
 
-    return onSnapshot(q, (snapshot) => {
-      const now = Timestamp.now();
-      const messages = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() } as any))
-        .filter(msg => {
-          if (msg.expiresAt && msg.expiresAt < now) return false;
-          return true;
-        })
-        .map(msg => ({
-          ...msg,
-          createdAtMillis: msg.timestamp?.toMillis?.() || Date.now(),
-          timestamp: msg.timestamp?.toDate()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || ''
-        }))
-        .reverse();
-      callback(messages);
-    });
-  },
+    // 2. Realtime Subscriptions
+    const channel = supabase
+      .channel(`room_${roomId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vocabulary', filter: `roomId=eq.${roomId}` }, () => {
+        supabase.from('vocabulary').select('*').eq('roomId', roomId).then(({ data }) => data && callbacks.onVocabulary(data));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assets', filter: `roomId=eq.${roomId}` }, () => {
+        supabase.from('assets').select('*').eq('roomId', roomId).then(({ data }) => data && callbacks.onAssets(data));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stories', filter: `roomId=eq.${roomId}` }, () => {
+        supabase.from('stories').select('*').eq('roomId', roomId).then(({ data }) => data && callbacks.onStories(data));
+      })
+      .subscribe();
 
-  async sendMessage(roomId: string, message: Partial<ChatMessage>, expirationHours?: number) {
-    const msgData: any = {
-      ...message,
-      timestamp: serverTimestamp(),
-      deletedBy: [],
-      recalled: false
+    return () => {
+      supabase.removeChannel(channel);
     };
-
-    if (expirationHours) {
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + expirationHours);
-      msgData.expiresAt = Timestamp.fromDate(expiresAt);
-    }
-
-    await addDoc(collection(db, 'rooms', roomId, 'messages'), msgData);
   },
 
-  async uploadMedia(file: Blob, path: string) {
-    const storageRef = ref(storage, path);
-    await uploadBytes(storageRef, file);
-    return await getDownloadURL(storageRef);
+  async getRoomData(roomId: string, callbacks: any) {
+    const { data: vocab } = await supabase.from('vocabulary').select('*').eq('roomId', roomId);
+    if (vocab) callbacks.onVocabulary(vocab);
+
+    const { data: assets } = await supabase.from('assets').select('*').eq('roomId', roomId);
+    if (assets) callbacks.onAssets(assets);
+
+    const { data: stories } = await supabase.from('stories').select('*').eq('roomId', roomId);
+    if (stories) callbacks.onStories(stories);
   },
 
-  // Vault (Shared per Room)
-  subscribeToVault(roomId: string, callback: (items: VocabularyItem[]) => void) {
-    const q = query(
-      collection(db, 'vault'),
-      where('roomId', '==', roomId),
-      orderBy('timestamp', 'desc')
-    );
-
-    return onSnapshot(q, (snapshot) => {
-      const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as VocabularyItem));
-      callback(items);
-    });
+  async addVocabulary(roomId: string, item: Omit<VocabularyItem, 'id'>) {
+    const { data, error } = await supabase.from('vocabulary').insert([{ ...item, roomId }]).select().single();
+    if (error) console.error(error);
+    return data;
   },
 
-  async addToVault(roomId: string, item: Partial<VocabularyItem>) {
-    const id = `v_${Date.now()}`;
-    await setDoc(doc(db, 'vault', id), {
-      ...item,
-      roomId,
-      timestamp: serverTimestamp(),
-      srsLevel: item.srsLevel || 1,
-      nextReviewDate: item.nextReviewDate || 'Tomorrow'
-    });
+  async addAsset(roomId: string, asset: Omit<SharedAsset, 'id'>) {
+    const { data, error } = await supabase.from('assets').insert([{ ...asset, roomId }]).select().single();
+    if (error) console.error(error);
+    return data;
   },
 
-  // Shared Assets
-  subscribeToAssets(roomId: string, callback: (assets: SharedAsset[]) => void) {
-    const q = query(
-      collection(db, 'rooms', roomId, 'shared_assets'),
-      orderBy('timestamp', 'desc')
-    );
-
-    return onSnapshot(q, (snapshot) => {
-      const assets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SharedAsset));
-      callback(assets);
-    });
-  },
-
-  async addAsset(roomId: string, asset: Partial<SharedAsset>) {
-    await addDoc(collection(db, 'rooms', roomId, 'shared_assets'), {
-      ...asset,
-      timestamp: serverTimestamp()
-    });
-  },
-
-  // Teaching Log
-  subscribeToTeachingLog(roomId: string, callback: (logs: TeachingLogEntry[]) => void) {
-    const q = query(
-      collection(db, 'rooms', roomId, 'teaching_log'),
-      orderBy('timestamp', 'desc')
-    );
-
-    return onSnapshot(q, (snapshot) => {
-      const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TeachingLogEntry));
-      callback(logs);
-    });
-  },
-
-  async addTeachingLog(roomId: string, log: Partial<TeachingLogEntry>) {
-    await addDoc(collection(db, 'rooms', roomId, 'teaching_log'), {
-      ...log,
-      timestamp: serverTimestamp()
-    });
-  },
-
-  // Room State (Shared Anchors)
-  subscribeToRoomState(roomId: string, callback: (state: any) => void) {
-    return onSnapshot(doc(db, 'rooms', roomId, 'state', 'anchors'), (snapshot) => {
-      if (snapshot.exists()) {
-        callback(snapshot.data());
-      }
-    });
-  },
-
-  async updateRoomState(roomId: string, partialState: any) {
-    const docRef = doc(db, 'rooms', roomId, 'state', 'anchors');
-    await setDoc(docRef, partialState, { merge: true });
-  },
-
-  // Stories
-  subscribeToStories(roomId: string, callback: (stories: MicroStory[]) => void) {
-    const q = query(
-      collection(db, 'rooms', roomId, 'stories'),
-      orderBy('timestamp', 'desc'),
-      limit(20)
-    );
-
-    return onSnapshot(q, (snapshot) => {
-      const now = Timestamp.now();
-      const stories = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() } as any))
-        .filter(story => {
-          if (story.expiresAt && story.expiresAt < now) return false;
-          return true;
-        })
-        .map(story => ({
-          ...story,
-          timestamp: story.timestamp?.toDate()?.toISOString() || new Date().toISOString()
-        }));
-      callback(stories);
-    });
-  },
-
-  async addStory(roomId: string, story: Partial<MicroStory>) {
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 24);
-    
-    await addDoc(collection(db, 'rooms', roomId, 'stories'), {
-      ...story,
-      timestamp: serverTimestamp(),
-      expiresAt: Timestamp.fromDate(expiresAt)
-    });
-  },
-
-  // User/Partner
-  subscribeToPartner(partnerId: string, callback: (partner: any) => void) {
-    return onSnapshot(doc(db, 'users', partnerId), (docSnap) => {
-      if (docSnap.exists()) {
-        callback({ id: docSnap.id, ...docSnap.data() });
-      } else {
-        callback(null);
-      }
-    });
-  },
-
-  // Calls
-  async initiateCall(roomId: string, callerId: string, callerName: string) {
-    const callRef = doc(collection(db, 'rooms', roomId, 'calls'), 'active_call');
-    await setDoc(callRef, {
-      callerId,
-      callerName,
-      status: 'ringing',
-      timestamp: serverTimestamp()
-    });
-  },
-
-  async endCall(roomId: string) {
-    const callRef = doc(collection(db, 'rooms', roomId, 'calls'), 'active_call');
-    await setDoc(callRef, { status: 'ended', timestamp: serverTimestamp() });
-  },
-
-  async deleteMessageForSelf(roomId: string, messageId: string, userId: string) {
-    const msgRef = doc(db, 'rooms', roomId, 'messages', messageId);
-    await updateDoc(msgRef, {
-      deletedBy: arrayUnion(userId)
-    });
-  },
-
-  async recallMessage(roomId: string, messageId: string, userId: string) {
-    const msgRef = doc(db, 'rooms', roomId, 'messages', messageId);
-    const snap = await getDoc(msgRef);
-    if (snap.exists()) {
-      const data = snap.data();
-      const msgTimestamp = data.timestamp?.toMillis ? data.timestamp.toMillis() : Date.now();
-      const now = Date.now();
-      const threeHoursInMs = 3 * 60 * 60 * 1000;
-      if (now - msgTimestamp > threeHoursInMs) {
-        throw new Error('Message is older than 3 hours and cannot be recalled.');
-      }
-    }
-    await updateDoc(msgRef, {
-      recalled: true,
-      recalledBy: userId
-    });
-  },
-
-  subscribeToIncomingCalls(roomId: string, currentUserId: string, callback: (call: any) => void) {
-    const callRef = doc(collection(db, 'rooms', roomId, 'calls'), 'active_call');
-    return onSnapshot(callRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.status === 'ringing' && data.callerId !== currentUserId) {
-          callback({ id: docSnap.id, ...data });
-        } else {
-          callback(null);
-        }
-      } else {
-        callback(null);
-      }
-    });
+  async addStory(roomId: string, story: Omit<MicroStory, 'id'>) {
+    const { data, error } = await supabase.from('stories').insert([{ ...story, roomId }]).select().single();
+    if (error) console.error(error);
+    return data;
   }
 };
