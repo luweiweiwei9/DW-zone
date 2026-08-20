@@ -13,6 +13,7 @@ import { Onboarding } from './components/Onboarding';
 import { authService } from './lib/authService';
 import { dbService } from './lib/dbService';
 import { supabase } from './lib/supabase';
+
 export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [partner, setPartner] = useState<UserProfile | null>(null);
@@ -20,11 +21,11 @@ export default function App() {
   const [currentTheme, setCurrentTheme] = useState<UiTheme>('glass');
   const [currentLang, setCurrentLang] = useState<UiLanguage>('en');
   const [incomingCall, setIncomingCall] = useState<{ id: string; callerName: string } | null>(null);
+
   useEffect(() => {
     // 1. 頁面載入時取得當前 session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        // 如果原本 App 用 authService 處理 Profile，可在這裡載入
         authService.getCurrentUser().then(setUser);
       } else {
         setUser(null);
@@ -42,6 +43,7 @@ export default function App() {
 
     return () => subscription.unsubscribe();
   }, []);
+
   // Real-time Data
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>([]);
   const [assets, setAssets] = useState<SharedAsset[]>([]);
@@ -83,31 +85,27 @@ export default function App() {
 
       const today = new Date().toLocaleDateString();
       
-      // Determine if I am User A or User B (Stable sorting)
       const isUserA = user.uid < partner.uid;
       const field = isUserA ? 'userACompleted' : 'userBCompleted';
       const partnerField = isUserA ? 'userBCompleted' : 'userACompleted';
 
-      // My progress
       const myStoriesToday = stories.filter(s => s.userId === user.uid && new Date(s.timestamp).toLocaleDateString() === today);
       const myVocabToday = vocabulary.filter(v => v.addedBy === user.uid && new Date().toLocaleDateString() === today);
       
-      // Partner's progress (Now both are shared!)
       const partnerStoriesToday = stories.filter(s => s.userId === partner.uid && new Date(s.timestamp).toLocaleDateString() === today);
       const partnerVocabToday = vocabulary.filter(v => v.addedBy === partner.uid && new Date(v.timestamp?.toDate?.() || v.timestamp).toLocaleDateString() === today);
 
       const updatedHabits = anchors.sharedHabits.map(h => {
         let newH = { ...h };
-        if (h.id === 'h1') { // Daily Audio Story
+        if (h.id === 'h1') {
           newH[field] = myStoriesToday.length > 0;
           newH[partnerField] = partnerStoriesToday.length > 0;
         }
-        if (h.id === 'h2') { // Extracted to Vault
+        if (h.id === 'h2') {
           newH[field] = myVocabToday.length > 0;
           newH[partnerField] = partnerVocabToday.length > 0;
         }
-        if (h.id === 'h3') { // Complete SRS
-          // Proxy with any activity for now
+        if (h.id === 'h3') {
           newH[field] = myVocabToday.length > 0 || myStoriesToday.length > 0;
         }
         return newH;
@@ -119,7 +117,6 @@ export default function App() {
         sharedHabits: updatedHabits
       };
 
-      // Only push to Firestore if something actually changed to avoid loops
       if (JSON.stringify(nextState) !== JSON.stringify({
         streakDays: anchors.streakDays,
         exchangeProgress: anchors.exchangeProgress,
@@ -167,7 +164,6 @@ export default function App() {
       const unsubTeaching = dbService.subscribeToTeachingLog(user.roomId, setTeachingLog);
       const unsubStories = dbService.subscribeToStories(user.roomId, setStories);
       
-      // Call listener
       const unsubCalls = dbService.subscribeToIncomingCalls(user.roomId, user.uid, (call) => {
         if (call) {
           setIncomingCall({ id: call.id, callerName: call.callerName });
@@ -209,7 +205,8 @@ export default function App() {
     setStories(prev => [story, ...prev]);
   };
 
-  if (!user || !user.partnerId) {
+  // 【修正重點】只要拿到 user 就允許顯示主頁，不再因為沒有 partnerId 而被卡在 Onboarding 頁面死循環！
+  if (!user) {
     return <Onboarding onLogin={setUser} />;
   }
 
@@ -225,7 +222,7 @@ export default function App() {
         currentTheme={currentTheme}
         setCurrentTheme={setCurrentTheme}
         currentUser={user?.uid || ''}
-        setCurrentUser={() => {}} // User is locked by Firebase auth
+        setCurrentUser={() => {}}
       />
 
       {/* Incoming Call Overlay */}
@@ -240,7 +237,7 @@ export default function App() {
           <div className="flex space-x-8">
             <button 
               onClick={() => {
-                dbService.endCall(user!.roomId!);
+                if (user?.roomId) dbService.endCall(user.roomId);
                 setIncomingCall(null);
               }}
               className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center hover:bg-red-700 transition shadow-xl"
@@ -251,7 +248,6 @@ export default function App() {
               onClick={() => {
                 setIncomingCall(null);
                 setActiveTab('chat');
-                // In a real app we'd start the WebRTC connection here
               }}
               className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center hover:bg-emerald-600 transition shadow-xl"
             >
@@ -280,7 +276,7 @@ export default function App() {
             currentUser={user}
             partner={partner}
             currentLang={currentLang}
-            roomId={user.roomId}
+            roomId={user.roomId || 'default-room'}
             onAddVocabulary={handleAddVocabularyFromChat}
           />
         )}
@@ -313,7 +309,7 @@ export default function App() {
         <NewStoryModal
           currentUser={user}
           currentLang={currentLang}
-          roomId={user.roomId}
+          roomId={user.roomId || 'default-room'}
           isOpen={isStoryModalOpen}
           onClose={() => setIsStoryModalOpen(false)}
           onAddStory={handleAddStory}
