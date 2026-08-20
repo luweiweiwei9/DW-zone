@@ -7,7 +7,7 @@ export const authService = {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}`,
+          redirectTo: window.location.origin,
         },
       });
       if (error) throw error;
@@ -36,41 +36,20 @@ export const authService = {
   },
 
   onAuthUpdate(callback: (user: UserProfile | null) => void) {
+    // 1. 初始化時先主動取得當前 Session
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        await handleUserDoc(session.user, callback);
+      } else {
+        callback(null);
+      }
+    });
+
+    // 2. 監聽後續 Auth 狀態變化
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       const user = session?.user;
-
       if (user) {
-        const { data: userDoc } = await supabase
-          .from('users')
-          .select('*')
-          .eq('uid', user.id)
-          .single();
-
-        if (!userDoc) {
-          const inviteCode = `DW-${user.id.slice(0, 4).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
-          const profile: UserProfile = {
-            uid: user.id,
-            email: user.email || '',
-            displayName: user.user_metadata?.full_name || '',
-            photoURL: user.user_metadata?.avatar_url || '',
-            name: user.user_metadata?.full_name || 'Friend',
-            avatar: user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
-            inviteCode,
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-          };
-
-          await supabase.from('users').insert([profile]);
-          await supabase.from('invites').insert([{
-            code: inviteCode,
-            senderId: user.id,
-            createdAt: new Date().toISOString(),
-            status: 'pending'
-          }]);
-
-          callback(profile);
-        } else {
-          callback(userDoc as UserProfile);
-        }
+        await handleUserDoc(user, callback);
       } else {
         callback(null);
       }
@@ -116,3 +95,47 @@ export const authService = {
     }
   }
 };
+
+// 處理使用者資料庫紀錄的 Helper Function
+async function handleUserDoc(user: any, callback: (user: UserProfile | null) => void) {
+  try {
+    const { data: userDoc, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('uid', user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching user doc:', error);
+    }
+
+    if (!userDoc) {
+      const inviteCode = `DW-${user.id.slice(0, 4).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const profile: UserProfile = {
+        uid: user.id,
+        email: user.email || '',
+        displayName: user.user_metadata?.full_name || '',
+        photoURL: user.user_metadata?.avatar_url || '',
+        name: user.user_metadata?.full_name || 'Friend',
+        avatar: user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
+        inviteCode,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      };
+
+      await supabase.from('users').insert([profile]);
+      await supabase.from('invites').insert([{
+        code: inviteCode,
+        senderId: user.id,
+        createdAt: new Date().toISOString(),
+        status: 'pending'
+      }]);
+
+      callback(profile);
+    } else {
+      callback(userDoc as UserProfile);
+    }
+  } catch (err) {
+    console.error('handleUserDoc Exception:', err);
+    callback(null);
+  }
+}
